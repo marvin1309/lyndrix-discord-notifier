@@ -1,0 +1,143 @@
+import requests
+from datetime import datetime
+from nicegui import ui
+# FIX: Pfad korrigiert
+from core.components.plugins.logic.models import ModuleManifest
+
+# ==========================================
+# 1. MANIFEST: Identifikation & Rechte
+# ==========================================
+manifest = ModuleManifest(
+    id="lyndrix.plugin.discord",
+    name="Discord Notifier",
+    version="2.1.0", # Version erhöht
+    description="Sendet System-Events und Status-Updates an Discord.",
+    author="Lyndrix",
+    icon="notifications_active",
+    type="PLUGIN",
+    permissions={
+        # Jetzt auch für das Boot-Event berechtigt
+        "subscribe": ["change_requested", "system:boot_complete"],
+        "emit": []
+    }
+)
+
+# Globaler State für das Plugin (in Memory)
+plugin_state = {
+    "notifications_sent": 0
+}
+
+# ==========================================
+# 2. LOGIK: Der API Client
+# ==========================================
+def send_webhook(ctx, webhook_url: str, bot_name: str, entity: str, action: str, payload: dict):
+    embed_color = 5763719 if action == "CREATE" else 16753920 
+    embed_fields = []
+    
+    for key, value in payload.items():
+        if value != "" and value is not None:
+            str_val = str(value)
+            if len(str_val) > 100: str_val = str_val[:97] + "..."
+            embed_fields.append({"name": str(key).capitalize(), "value": f"`{str_val}`", "inline": True})
+            
+    embed_fields = embed_fields[:25] # Discord Limit
+
+    discord_msg = {
+        "username": bot_name,
+        "avatar_url": "https://cdn-icons-png.flaticon.com/512/3256/3256013.png", 
+        "embeds": [{
+            "title": f"🚀 {entity} Event ausgelöst!",
+            "description": f"Ein **{action}** Vorgang wurde registriert.\nDetails:",
+            "color": embed_color,
+            "fields": embed_fields,
+            "footer": {"text": "Lyndrix Plugin Engine"},
+            "timestamp": datetime.utcnow().isoformat()
+        }]
+    }
+    
+    try:
+        response = requests.post(webhook_url, json=discord_msg, timeout=3)
+        if response.status_code == 204:
+            plugin_state["notifications_sent"] += 1
+            ctx.log.info("SUCCESS: Embed sent to Discord.")
+            return True
+        else:
+            ctx.log.warning(f"WARNING: Unexpected Discord status: {response.status_code}")
+            return False
+    except Exception as e:
+        ctx.log.error(f"ERROR: Failed to send to Discord: {e}", exc_info=True)
+        return False
+
+# ==========================================
+# 3. UI: Settings Tab (Wird später in globale Settings integriert)
+# ==========================================
+def render_settings_ui(ctx):
+    """
+    Diese Funktion baut die UI auf. Später ruft das globale Settings-Modul
+    diese Funktion auf, wenn man auf den Tab 'Discord' klickt.
+    """
+    # Dummy-Einstellungen (Später aus der Datenbank laden)
+    current_state = {"enabled": True, "bot_name": "Lyndrix Event Broker"}
+    vault_state = {"webhook_url": ctx.get_secret("webhook_url") or ""}
+
+    def apply_save():
+        # TODO: 'enabled' und 'bot_name' in DB speichern (Phase 4.1)
+        
+        # Webhook im isolierten Plugin-Vault-Pfad speichern!
+        if vault_state["webhook_url"]:
+            success = ctx.set_secret("webhook_url", vault_state["webhook_url"])
+            if success:
+                ui.notify('Webhook sicher im Vault gespeichert!', type='positive')
+            else:
+                ui.notify('Fehler beim Speichern im Vault', type='negative')
+
+    with ui.column().classes('w-full gap-4 pt-2'):
+        ui.label('Konfiguration für System-Benachrichtigungen.').classes('text-sm text-slate-500')
+        
+        with ui.row().classes('w-full items-center gap-4'):
+            ui.switch('Benachrichtigungen aktivieren').bind_value(current_state, 'enabled').props('color=primary')
+            ui.input('Bot Name').bind_value(current_state, 'bot_name').classes('flex-grow').props('outlined dense')
+        
+        # ACHTUNG: Hier wird der Webhook angezeigt, wenn er im Vault existiert
+        ui.input('Discord Webhook URL (Vault)').bind_value(vault_state, 'webhook_url').classes('w-full').props('outlined dense type=password')
+        
+        with ui.row().classes('w-full justify-end mt-2'):
+            ui.button('Speichern', on_click=apply_save, icon='save', color='primary').props('unelevated rounded size=sm')
+
+# ==========================================
+# 4. SETUP: Das Herzstück des Plugins
+# ==========================================
+def setup(ctx):
+    ctx.log.info("STARTUP: Plugin booting...")
+
+    # Handler für Änderungen (Change Manager)
+    @ctx.subscribe('change_requested')
+    async def on_change(data):
+        webhook_url = ctx.get_secret("webhook_url")
+        if not webhook_url: return
+        send_webhook(ctx, webhook_url, "Lyndrix Broker", data.get('entity_type', 'System'), data.get('action', 'UPDATE'), data.get('payload', {}))
+
+    # NEU: Handler für erfolgreichen Systemstart
+    @ctx.subscribe('system:boot_complete')
+    async def on_boot_complete(payload):
+        ctx.log.info("EVENT: Boot event received. Sending status to Discord...")
+        webhook_url = ctx.get_secret("webhook_url")
+        if not webhook_url: 
+            ctx.log.warning("SKIP: Boot notification skipped: No webhook.")
+            return
+        
+        # Wir nutzen die bestehende send_webhook Funktion
+        send_webhook(
+            ctx=ctx,
+            webhook_url=webhook_url,
+            bot_name="Lyndrix System",
+            entity="Core Engine",
+            action="STARTUP",
+            payload={
+                "status": "Online",
+                "message": "Alle Kernsysteme erfolgreich hochgefahren.",
+                "zeitpunkt": datetime.now().strftime("%H:%M:%S")
+            }
+        )
+        
+    ctx.log.info("SUCCESS: Connected to Event Bus.")
