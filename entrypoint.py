@@ -3,6 +3,7 @@ from datetime import datetime
 from nicegui import ui
 # FIX: Pfad korrigiert
 from core.components.plugins.logic.models import ModuleManifest
+from ui.theme import UIStyles
 
 # ==========================================
 # 1. MANIFEST: Identifikation & Rechte
@@ -10,14 +11,13 @@ from core.components.plugins.logic.models import ModuleManifest
 manifest = ModuleManifest(
     id="lyndrix.plugin.discord",
     name="Discord Notifier",
-    version="2.1.0", # Version erhöht
+    version="0.0.2",
     description="Sendet System-Events und Status-Updates an Discord.",
     author="Lyndrix",
     icon="notifications_active",
     type="PLUGIN",
     permissions={
-        # Jetzt auch für das Boot-Event berechtigt
-        "subscribe": ["change_requested", "system:boot_complete"],
+        "subscribe": ["change_requested", "system:boot_complete", "notification:outbound"],
         "emit": []
     }
 )
@@ -68,6 +68,38 @@ def send_webhook(ctx, webhook_url: str, bot_name: str, entity: str, action: str,
         ctx.log.error(f"ERROR: Failed to send to Discord: {e}", exc_info=True)
         return False
 
+def send_notification_webhook(ctx, webhook_url: str, bot_name: str, notif: dict):
+    """Tailored specifically for the new Global Notification System payload."""
+    type_colors = {
+        "positive": 5763719,   # Emerald Green
+        "negative": 15548997,  # Red
+        "warning": 16753920,   # Amber/Yellow
+        "info": 3447003        # Slate Blue
+    }
+    embed_color = type_colors.get(notif.get("type", "info"), 3447003)
+
+    discord_msg = {
+        "username": bot_name,
+        "avatar_url": "https://cdn-icons-png.flaticon.com/512/3256/3256013.png", 
+        "embeds": [{
+            "title": f"🔔 {notif.get('title', 'System Notification')}",
+            "description": notif.get("message", "No content provided."),
+            "color": embed_color,
+            "footer": {"text": "Lyndrix Notification Engine"},
+            "timestamp": datetime.utcnow().isoformat()
+        }]
+    }
+    
+    try:
+        response = requests.post(webhook_url, json=discord_msg, timeout=3)
+        if response.status_code == 204:
+            plugin_state["notifications_sent"] += 1
+            ctx.log.info(f"SUCCESS: Notification '{notif.get('title')}' sent to Discord.")
+        else:
+            ctx.log.warning(f"WARNING: Unexpected Discord status: {response.status_code}")
+    except Exception as e:
+        ctx.log.error(f"ERROR: Failed to send notification to Discord: {e}", exc_info=True)
+
 # ==========================================
 # 3. UI: Settings Tab (Wird später in globale Settings integriert)
 # ==========================================
@@ -92,7 +124,7 @@ def render_settings_ui(ctx):
                 ui.notify('Fehler beim Speichern im Vault', type='negative')
 
     with ui.column().classes('w-full gap-4 pt-2'):
-        ui.label('Konfiguration für System-Benachrichtigungen.').classes('text-sm text-slate-500')
+        ui.label('Konfiguration für System-Benachrichtigungen.').classes(UIStyles.TEXT_MUTED)
         
         with ui.row().classes('w-full items-center gap-4'):
             ui.switch('Benachrichtigungen aktivieren').bind_value(current_state, 'enabled').props('color=primary')
@@ -139,5 +171,12 @@ def setup(ctx):
                 "zeitpunkt": datetime.now().strftime("%H:%M:%S")
             }
         )
+        
+    # NEU: Zentraler Notification Handler
+    @ctx.subscribe('notification:outbound')
+    async def on_notification(payload):
+        webhook_url = ctx.get_secret("webhook_url")
+        if not webhook_url: return
+        send_notification_webhook(ctx, webhook_url, "Lyndrix Notifier", payload)
         
     ctx.log.info("SUCCESS: Connected to Event Bus.")
