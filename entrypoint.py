@@ -1,8 +1,7 @@
 import requests
 from datetime import datetime
 from nicegui import ui
-# FIX: Pfad korrigiert
-from core.components.plugins.logic.models import ModuleManifest
+from core.api import ModuleManifest
 from ui.theme import UIStyles
 
 # ==========================================
@@ -11,11 +10,14 @@ from ui.theme import UIStyles
 manifest = ModuleManifest(
     id="lyndrix.plugin.discord",
     name="Discord Notifier",
-    version="0.0.2",
+    version="0.0.3",
     description="Sendet System-Events und Status-Updates an Discord.",
     author="Lyndrix",
     icon="notifications_active",
     type="PLUGIN",
+    min_core_version="1.0.0",
+    auto_enable_on_install=False,
+    repo_url="https://github.com/marvin1309/lyndrix-discord-notifier",
     permissions={
         "subscribe": ["change_requested", "system:boot_complete", "notification:outbound"],
         "emit": []
