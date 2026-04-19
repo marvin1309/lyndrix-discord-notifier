@@ -10,7 +10,7 @@ from ui.theme import UIStyles
 manifest = ModuleManifest(
     id="lyndrix.plugin.discord",
     name="Discord Notifier",
-    version="0.0.3",
+    version="0.0.4",
     description="Sendet System-Events und Status-Updates an Discord.",
     author="Lyndrix",
     icon="notifications_active",
