@@ -10,7 +10,7 @@ from ui.theme import UIStyles
 manifest = ModuleManifest(
     id="lyndrix.plugin.discord",
     name="Discord Notifier",
-    version="0.0.4",
+    version="0.0.5",
     description="Sendet System-Events und Status-Updates an Discord.",
     author="Lyndrix",
     icon="notifications_active",
@@ -46,7 +46,7 @@ def send_webhook(ctx, webhook_url: str, bot_name: str, entity: str, action: str,
 
     discord_msg = {
         "username": bot_name,
-        "avatar_url": "https://cdn-icons-png.flaticon.com/512/3256/3256013.png", 
+        "avatar_url": "https://raw.githubusercontent.com/marvin1309/lyndrix-core/main/app/assets/icons/logo.png", 
         "embeds": [{
             "title": f"🚀 {entity} Event ausgelöst!",
             "description": f"Ein **{action}** Vorgang wurde registriert.\nDetails:",
@@ -82,7 +82,7 @@ def send_notification_webhook(ctx, webhook_url: str, bot_name: str, notif: dict)
 
     discord_msg = {
         "username": bot_name,
-        "avatar_url": "https://cdn-icons-png.flaticon.com/512/3256/3256013.png", 
+        "avatar_url": "https://raw.githubusercontent.com/marvin1309/lyndrix-core/main/app/assets/icons/logo.png", 
         "embeds": [{
             "title": f"🔔 {notif.get('title', 'System Notification')}",
             "description": notif.get("message", "No content provided."),
